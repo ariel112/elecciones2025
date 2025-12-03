@@ -3,196 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitoreo Electoral CNE (JS Puro)</title>
+    <title>Monitoreo Electoral Local</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f0f4f8;
         }
         .card {
             background-color: white;
-            border-radius: 0.5rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            padding: 1rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
         }
         .header-bg {
-            background-color: #004d99;
-        }
-        .info-acta-header {
-            background-color: #004d3e;
-            color: white;
-            padding: 1rem;
-            border-top-left-radius: 0.5rem;
-            border-top-right-radius: 0.5rem;
-        }
-        .candidate-card-flat {
-            border-radius: 0;
-            box-shadow: none;
-            border-bottom: 1px solid #e5e7eb;
-            padding: 1.5rem 0.5rem;
-            margin: 0;
-        }
-        .candidate-column {
-            background-color: white;
-            border-radius: 0.5rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-        }
-        .progress-bar-container {
-            height: 8px;
-            border-radius: 4px;
-            overflow: hidden;
-            background-color: #e5e7eb;
+            background-image: linear-gradient(to right, #004d99, #007bff);
         }
     </style>
     <!-- Chart.js CDN for graphics -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <!-- Firebase SDKs (Usando import para compatibilidad moderna) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, onSnapshot, addDoc, query, orderBy, getDocs, limit, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // --- VARIABLES GLOBALES DE LA APLICACIÓN ---
-        let db, auth, userId = null;
+    <script>
+        // --- VARIABLES GLOBALES Y CONFIGURACIÓN ---
         let currentIntervalId = null;
-        let barChartInstance, growthChartInstance; // Instancias de Chart.js
-        
-        // Variables de Configuración
         const POLLING_INTERVAL_STORAGE_KEY = 'pollingIntervalMinutes';
-        const API_URL = 'https://resultadosgenerales2025-api.cne.hn/esc/v1/presentacion-resultados';
-        const API_PAYLOAD = { "codigos": [], "tipco": "01", "depto": "00", "comuna": "00", "mcpio": "000", "zona": "", "pesto": "", "mesa": 0 };
+        const HISTORY_STORAGE_KEY = 'electionResultsHistory'; // Clave para localStorage
+        
+        // Definición de Candidatos a Rastrear (Ajustados según el screenshot)
         const CANDIDATE_TRACKING = [
-            { id: '1', nombre: 'SALVADOR NASRRALLA', color: '#B3000C', foto: 'https://placehold.co/100x100/A3000C/ffffff?text=SN' }, 
-            { id: '2', nombre: 'NASRY JUAN ASZURA ZABLAH', color: '#004A99', foto: 'https://placehold.co/100x100/004A99/ffffff?text=NA' }, 
-            { id: '3', nombre: 'RIXI RAMONA MONCADA GODOY', color: '#FF7F00', foto: 'https://placehold.co/100x100/FF7F00/ffffff?text=RM' }, 
+            { id: '1', nombre: 'SALVADOR NASRRALLA', color: '#10B981', foto: 'https://placehold.co/100x100/10B981/ffffff?text=SN' },
+            { id: '2', nombre: 'NASRY JUAN ASZURA ZABLAH', color: '#EF4444', foto: 'https://placehold.co/100x100/EF4444/ffffff?text=NA' },
+            { id: '3', nombre: 'RIXI RAMONA MONCADA GODOY', color: '#f97316', foto: 'https://placehold.co/100x100/f97316/ffffff?text=RM' },
             { id: '4', nombre: 'OTROS CANDIDATOS', color: '#3B82F6', foto: 'https://placehold.co/100x100/3B82F6/ffffff?text=OC' },
         ];
-        const candidatesToTrack = ['SALVADOR NASRRALLA', 'NASRY JUAN ASZURA ZABLAH'];
+        
+        // La ruta de la API y el payload (cuerpo de la petición POST)
+        const API_URL = 'https://resultadosgenerales2025-api.cne.hn/esc/v1/presentacion-resultados';
+        const API_PAYLOAD = {
+            "codigos": [], "tipco": "01", "depto": "00", "comuna": "00", "mcpio": "000", "zona": "", "pesto": "", "mesa": 0
+        };
 
-        // Variables de Firebase (Proporcionadas por el entorno de Canvas)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        const COLLECTION_PATH = `artifacts/${appId}/public/data/election_results_history`;
+        // Gráficos globales
+        let barChartInstance, growthChartInstance;
 
-        // --- 1. Utilidades de UI (Mensajes) ---
 
-        function showMessage(message, type) {
-            const msgEl = document.getElementById('message-box');
-            msgEl.textContent = message;
-            msgEl.className = 'text-center p-2 rounded-lg mt-4';
-            if (type === 'success') {
-                msgEl.classList.add('bg-green-100', 'text-green-800');
-            } else if (type === 'error') {
-                msgEl.classList.add('bg-red-100', 'text-red-800');
-            }
-            setTimeout(() => { msgEl.textContent = ''; msgEl.className = ''; }, 5000);
+        // --- 1. Inicialización y Carga ---
+
+        function initializeApp() {
+            // No se necesita Firebase, solo cargamos la configuración local
+            loadIntervalAndStartPolling();
+            loadAndDisplayResults(); 
         }
 
-        function setStatus(message) {
-            document.getElementById('status').textContent = message;
-        }
+        // --- 2. Funciones de API y Almacenamiento Local ---
 
-        function setLastUpdate(time) {
-            document.getElementById('last-update').textContent = time;
-        }
-
-
-        // --- 2. Lógica de Firebase y Auth ---
-
-        async function initializeFirebase() {
+        /**
+         * Llama a la API de resultados electorales.
+         * En un entorno local (file://), esto ejecutará el modo de simulación.
+         * @returns {Object[]} Datos de la API procesados.
+         */
+        async function fetchApiResults() {
             try {
-                // setLogLevel('debug'); // Descomentar para ver logs de Firestore
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
+                document.getElementById('status').textContent = 'Consultando API...';
                 
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
+                // Determinamos si estamos en un entorno local (donde CORS fallará)
+                const isLocalFile = window.location.protocol === 'file:';
+
+                if (isLocalFile) {
+                    // --- MODO DE SIMULACIÓN (Para que funcione al abrir el archivo localmente) ---
+                    const factor = Math.random() * 0.05 + 1; // Crecimiento entre 1% y 5%
+                    const latestData = getLatestStoredResults();
+                    
+                    // Usamos los valores del screenshot como base
+                    const baseVotes = latestData ? latestData.data : {
+                         'SALVADOR NASRRALLA': 1018320, 
+                         'NASRY JUAN ASZURA ZABLAH': 999441, 
+                         'RIXI RAMONA MONCADA GODOY': 480203,
+                         'OTROS CANDIDATOS': 0
+                    };
+                    
+                    const mockResults = [];
+                    let totalVotos = 0;
+
+                    CANDIDATE_TRACKING.forEach(c => {
+                        const currentVotes = baseVotes[c.nombre] || 0; 
+                        
+                        let newVotes;
+                        if (c.nombre !== 'OTROS CANDIDATOS') {
+                            newVotes = Math.round(currentVotes * factor) + Math.floor(Math.random() * 5000);
+                        } else {
+                            newVotes = 0; 
+                        }
+                        
+                        mockResults.push({ nombre: c.nombre, votos: newVotes });
+                        totalVotos += newVotes;
+                    });
+                    
+                    const processedMock = {
+                        data: mockResults.reduce((acc, c) => {
+                            acc[c.nombre] = c.votos;
+                            return acc;
+                        }, {}),
+                        totalVotos: totalVotos,
+                        processedCandidates: mockResults.map(c => ({
+                            ...c,
+                            porcentaje: (c.votos / totalVotos * 100).toFixed(2)
+                        })),
+                        // Agregar timestamp manual para el historial
+                        timestamp: new Date().toISOString() 
+                    };
+
+                    document.getElementById('status').textContent = 'Modo Simulación: Datos generados y guardados localmente.';
+                    return processedMock;
                 }
-                
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        document.getElementById('user-id').textContent = `ID de Sesión: ${userId}`;
-                        setStatus("Firebase listo. Cargando datos...");
-                        loadIntervalAndStartPolling();
-                        listenForResults();
-                    } else {
-                        setStatus("Error de autenticación. No se pueden cargar datos.");
-                    }
+                // --- FIN DEL MOCK DATA ---
+
+                // --- LÓGICA DE API REAL (Solo funcionará si se ejecuta en un servidor que pase CORS) ---
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(API_PAYLOAD)
                 });
+
+                if (!response.ok) {
+                    throw new Error(`Error HTTP: ${response.status}. La simulación se usa como respaldo.`);
+                }
+
+                const rawData = await response.json();
+                
+                const candidatesList = rawData.candidatos || rawData.resultados || rawData.results || [];
+                let totalVotos = 0;
+                const candidateVotes = {};
+                
+                candidatesList.forEach(c => {
+                    const candidateName = c.nombre || ''; 
+                    const votes = parseInt(c.votos, 10) || 0;
+                    totalVotos += votes;
+
+                    const trackedCandidate = CANDIDATE_TRACKING.find(t => t.nombre === candidateName);
+                    
+                    if (trackedCandidate) {
+                        candidateVotes[candidateName] = votes;
+                    } 
+                });
+                
+                const processedCandidates = CANDIDATE_TRACKING.map(t => {
+                    const votos = candidateVotes[t.nombre] || 0;
+                    return {
+                        nombre: t.nombre,
+                        votos: votos,
+                        porcentaje: (totalVotos > 0 ? (votos / totalVotos * 100) : 0).toFixed(2)
+                    };
+                }).filter(c => c.votos > 0);
+                
+                document.getElementById('status').textContent = 'Última consulta de API exitosa.';
+                return { 
+                    data: candidateVotes, 
+                    totalVotos,
+                    processedCandidates,
+                    timestamp: new Date().toISOString()
+                };
 
             } catch (error) {
-                console.error("Error al inicializar Firebase o autenticar:", error);
-                setStatus('Error: No se pudo conectar a Firebase.');
+                console.error("Error al obtener datos de la API (usando simulación):", error);
+                document.getElementById('status').textContent = `Error API: ${error.message}. Usando Modo Simulación.`;
+                // Si la API falla, recurrimos a la simulación para tener datos de crecimiento
+                return fetchApiResultsSimulated();
             }
         }
         
         /**
-         * Obtiene el último registro guardado en Firestore (para la simulación).
+         * Función auxiliar para la simulación en caso de que la API real falle.
          */
-        async function getLatestStoredResults() {
-             if (!db) return null;
-             try {
-                const q = query(collection(db, COLLECTION_PATH), orderBy("timestamp", "desc"), limit(1));
-                const snapshot = await getDocs(q);
-                if (!snapshot.empty) {
-                    return snapshot.docs[0].data();
-                }
-             } catch (e) {
-                console.error("Error al obtener el último resultado:", e);
-             }
-             return null;
-        }
-
-        /**
-         * Escucha los cambios en Firestore en tiempo real (onSnapshot).
-         */
-        function listenForResults() {
-            if (!db) return;
-            const q = query(collection(db, COLLECTION_PATH), orderBy("timestamp", "asc"));
-
-            onSnapshot(q, (snapshot) => {
-                const loadedResults = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    if (data.timestamp) { 
-                        loadedResults.push({
-                            ...data,
-                            timestamp: data.timestamp.toDate() 
-                        });
-                    }
-                });
-                
-                updateDashboard(loadedResults);
-                
-            }, (error) => {
-                console.error("Error al escuchar cambios en Firestore:", error);
-                setStatus('Error de conexión en tiempo real con Firestore.');
-            });
-        }
-
-
-        // --- 3. Lógica de API y Almacenamiento Central ---
-        
-        /**
-         * Función auxiliar para la simulación.
-         */
-        async function fetchApiResultsSimulated() {
-            const factor = Math.random() * 0.005 + 1; 
-            const latestData = await getLatestStoredResults();
+        function fetchApiResultsSimulated() {
+            const factor = Math.random() * 0.05 + 1;
+            const latestData = getLatestStoredResults();
             
             const baseVotes = latestData ? latestData.data : {
                  'SALVADOR NASRRALLA': 1018320, 
                  'NASRY JUAN ASZURA ZABLAH': 999441, 
                  'RIXI RAMONA MONCADA GODOY': 480203,
-                 'OTROS CANDIDATOS': 22388
+                 'OTROS CANDIDATOS': 0
             };
             
             const mockResults = [];
@@ -200,13 +191,9 @@
 
             CANDIDATE_TRACKING.forEach(c => {
                 const currentVotes = baseVotes[c.nombre] || 0; 
-                
-                let newVotes;
-                if (c.nombre !== 'OTROS CANDIDATOS') {
-                    newVotes = Math.round(currentVotes * factor) + Math.floor(Math.random() * 5000);
-                } else {
-                    newVotes = Math.round(currentVotes * (Math.random() * 0.001 + 1));
-                }
+                let newVotes = (c.nombre !== 'OTROS CANDIDATOS') 
+                    ? Math.round(currentVotes * (Math.random() * 0.005 + 1)) + Math.floor(Math.random() * 5000)
+                    : 0;
                 
                 mockResults.push({ nombre: c.nombre, votos: newVotes });
                 totalVotos += newVotes;
@@ -218,84 +205,120 @@
                     return acc;
                 }, {}),
                 totalVotos: totalVotos,
+                processedCandidates: mockResults.map(c => ({
+                    ...c,
+                    porcentaje: (c.votos / totalVotos * 100).toFixed(2)
+                })),
+                timestamp: new Date().toISOString()
             };
         }
 
+
         /**
-         * Llama a la API de resultados electorales.
+         * Carga el historial de resultados desde localStorage.
+         * @returns {Object[]} El historial completo o un array vacío.
          */
-        async function fetchApiResults() {
+        function loadHistory() {
             try {
-                setStatus('Consultando API (Intento real)...');
-                
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(API_PAYLOAD)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Error HTTP: ${response.status}`);
-                }
-
-                const rawData = await response.json();
-                
-                const candidatesList = rawData.candidatos || rawData.resultados || rawData.results || [];
-                let totalVotos = 0;
-                const candidateVotes = {};
-                
-                candidatesList.forEach(c => {
-                     const votes = parseInt(c.votos, 10) || 0;
-                     totalVotos += votes;
-                     
-                     const trackedCandidate = CANDIDATE_TRACKING.find(t => t.nombre === (c.nombre || ''));
-                     if (trackedCandidate) {
-                         candidateVotes[trackedCandidate.nombre] = votes;
-                     }
-                });
-
-                if (totalVotos === 0 && candidatesList.length === 0) {
-                     throw new Error("API devolvió datos vacíos o no válidos.");
-                }
-                
-                setStatus('Última consulta de API real exitosa.');
-                return { 
-                    data: candidateVotes, 
-                    totalVotos,
-                };
-
-            } catch (error) {
-                console.error("Error al obtener datos de la API (Recurriendo a la simulación):", error);
-                setStatus(`Error API/CORS: ${error.message}. Usando Modo Simulación.`);
-                return fetchApiResultsSimulated();
+                const historyJson = localStorage.getItem(HISTORY_STORAGE_KEY);
+                return historyJson ? JSON.parse(historyJson) : [];
+            } catch (e) {
+                console.error("Error al cargar historial de localStorage:", e);
+                return [];
             }
         }
 
         /**
-         * Guarda los resultados de la API en Firestore.
+         * Obtiene el último registro guardado en localStorage.
          */
-        async function saveResults(results) {
-            if (!db || !userId || !results) {
-                console.warn("No se puede guardar: DB no inicializada o resultados nulos.");
+        function getLatestStoredResults() {
+             const history = loadHistory();
+             if (history.length > 0) {
+                 // El último elemento es el más reciente
+                 return history[history.length - 1];
+             }
+             return null;
+        }
+
+        /**
+         * Agrega el nuevo resultado al historial y lo guarda en localStorage.
+         * @param {Object} results Los resultados procesados a guardar.
+         */
+        function saveResults(results) {
+            if (!results) {
+                console.warn("No se pueden guardar resultados nulos.");
                 return;
             }
             try {
-                await addDoc(collection(db, COLLECTION_PATH), {
-                    timestamp: serverTimestamp(), 
-                    data: results.data, 
-                    totalVotos: results.totalVotos,
-                    userId: userId
-                });
-                setStatus('Resultados guardados y actualizados en Firestore.');
+                let history = loadHistory();
+                
+                // Convertir el timestamp ISO string de vuelta a Date si fuera necesario 
+                // para la compatibilidad con el código de gráficas.
+                const newRecord = {
+                    ...results,
+                    timestamp: new Date(results.timestamp) 
+                };
+                
+                history.push(newRecord);
+                
+                // Guardar solo los campos JSON serializables
+                const serializableHistory = history.map(h => ({
+                    ...h,
+                    timestamp: h.timestamp.toISOString() // Volver a ISO string para guardar
+                }));
+
+                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(serializableHistory));
+                console.log("Resultados guardados en localStorage.");
+                document.getElementById('status').textContent = 'Resultados guardados y actualizados en el navegador.';
+                
             } catch (error) {
-                console.error("Error al guardar en Firestore:", error);
-                setStatus('Error al guardar en Firestore.');
+                console.error("Error al guardar en localStorage:", error);
+                document.getElementById('status').textContent = 'Error al guardar en el navegador.';
             }
         }
-
-
-        // --- 4. Lógica de Polling y Configuración ---
         
+        /**
+         * Carga el historial completo y actualiza el dashboard.
+         */
+        function loadAndDisplayResults() {
+            let allResults = loadHistory();
+            
+            // Revertir el timestamp de ISO string a objeto Date para la visualización
+            allResults = allResults.map(h => ({
+                ...h,
+                timestamp: new Date(h.timestamp)
+            }));
+            
+            updateDashboard(allResults);
+        }
+
+        // --- 3. Lógica de Polling y Configuración ---
+
+        function loadIntervalAndStartPolling() {
+            const storedInterval = localStorage.getItem(POLLING_INTERVAL_STORAGE_KEY);
+            const defaultInterval = 20; // 20 minutos por defecto
+            const intervalMinutes = storedInterval ? parseInt(storedInterval, 10) : defaultInterval;
+
+            document.getElementById('polling-interval').value = intervalMinutes;
+            startPolling(intervalMinutes);
+
+            // Manejador del botón de configuración
+            document.getElementById('save-config-btn').addEventListener('click', () => {
+                const newInterval = parseInt(document.getElementById('polling-interval').value, 10);
+                if (newInterval >= 1) {
+                    localStorage.setItem(POLLING_INTERVAL_STORAGE_KEY, newInterval);
+                    startPolling(newInterval);
+                    showMessage('Intervalo de consulta actualizado a ' + newInterval + ' minutos.', 'success');
+                } else {
+                    showMessage('El intervalo debe ser al menos 1 minuto.', 'error');
+                }
+            });
+        }
+
+        /**
+         * Inicia el proceso de consulta a la API y lo programa con el intervalo dado.
+         * @param {number} minutes El intervalo en minutos.
+         */
         function startPolling(minutes) {
             if (currentIntervalId) {
                 clearInterval(currentIntervalId);
@@ -305,98 +328,28 @@
             const pollingFn = async () => {
                 const results = await fetchApiResults();
                 if (results) {
-                    await saveResults(results);
+                    saveResults(results);
+                    loadAndDisplayResults(); // Recargar y mostrar
                 }
-                setLastUpdate(new Date().toLocaleTimeString('es-HN'));
+                document.getElementById('last-update').textContent = `Última consulta: ${new Date().toLocaleTimeString('es-HN')}`;
             };
 
             // Ejecutar inmediatamente y luego en el intervalo
             pollingFn(); 
             currentIntervalId = setInterval(pollingFn, ms);
-            document.getElementById('interval-display').textContent = minutes;
+            document.getElementById('interval-display').textContent = `${minutes} minutos`;
         }
 
-        function saveConfig() {
-            const inputElement = document.getElementById('polling-interval-input');
-            const newInterval = parseInt(inputElement.value, 10);
-            if (newInterval >= 1) {
-                localStorage.setItem(POLLING_INTERVAL_STORAGE_KEY, newInterval);
-                startPolling(newInterval);
-                showMessage('Intervalo de consulta actualizado a ' + newInterval + ' minutos.', 'success');
-            } else {
-                showMessage('El intervalo debe ser al menos 1 minuto.', 'error');
-            }
-        }
 
-        function loadIntervalAndStartPolling() {
-            const storedInterval = localStorage.getItem(POLLING_INTERVAL_STORAGE_KEY);
-            const defaultInterval = 20;
-            const intervalMinutes = storedInterval ? parseInt(storedInterval, 10) : defaultInterval;
+        // --- 4. Funciones de Gráficas y Dashboard ---
 
-            document.getElementById('polling-interval-input').value = intervalMinutes;
-            document.getElementById('interval-display').textContent = intervalMinutes;
-        }
-
-        // --- 5. Lógica de Dashboard y Gráficos ---
-
-        function updateDashboard(allResults) {
-            if (allResults.length === 0) {
-                 document.getElementById('latest-results-cards').innerHTML = '<p class="text-gray-500 p-4">Aún no hay datos históricos.</p>';
-                 document.getElementById('total-votes-display').textContent = 'Total de Votos Reportados: 0';
-                 return;
-            }
-            
-            const latestRecord = allResults[allResults.length - 1];
-            const totalVotos = latestRecord.totalVotos || 1; 
-
-            // 1. Prepara datos para las tarjetas
-            const latestCandidatesData = CANDIDATE_TRACKING.map(t => {
-                const votos = latestRecord.data[t.nombre] || 0;
-                const porcentaje = (totalVotos > 0 ? (votos / totalVotos * 100) : 0).toFixed(2);
-                return { ...t, votos, porcentaje };
-            }).filter(c => c.votos > 0).sort((a, b) => b.votos - a.votos);
-
-            // 2. Actualiza las tarjetas
-            let cardsHtml = '';
-            latestCandidatesData.forEach(c => {
-                const partido = c.nombre.split(' ')[0] === 'NASRY' ? 'NACIONAL' : (c.nombre.split(' ')[0] === 'RIXI' ? 'LIBERTAD' : 'LIBERAL');
-                
-                cardsHtml += `
-                    <div class="candidate-card-flat">
-                        <div class="flex items-center space-x-4">
-                            <div class="flex-shrink-0 relative">
-                                <img src="${c.foto}" alt="Foto de ${c.nombre}" class="w-12 h-12 rounded-full object-cover border-2 border-gray-300">
-                                <span class="absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white" style="background-color: ${c.color};"></span>
-                            </div>
-                            <div class="flex-grow">
-                                <p class="text-sm font-semibold text-gray-800">${c.nombre}</p>
-                                <p class="text-xs text-gray-500" style="color: ${c.color};">PARTIDO ${partido} DE HONDURAS</p>
-                            </div>
-                        </div>
-                        <div class="mt-3">
-                            <div class="flex justify-between items-center text-sm font-bold">
-                                <span class="text-gray-700">${c.porcentaje}%</span>
-                                <span class="text-gray-800">${c.votos.toLocaleString('es-HN')}</span>
-                            </div>
-                            <div class="progress-bar-container mt-1">
-                                <div class="h-full" style="width: ${c.porcentaje}%; background-color: ${c.color};"></div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            document.getElementById('latest-results-cards').innerHTML = cardsHtml;
-            document.getElementById('total-votes-display').textContent = `Total de Votos Reportados: ${latestRecord.totalVotos.toLocaleString('es-HN')}`;
-            
-            // 3. Actualiza los gráficos
-            updateBarChart(latestCandidatesData);
-            updateGrowthChart(allResults);
-        }
-        
-        function updateBarChart(candidatesData) {
-            const labels = candidatesData.map(c => c.nombre.split(' ')[0]);
-            const votes = candidatesData.map(c => c.votos);
-            const colors = candidatesData.map(c => c.color);
+        /**
+         * Dibuja y actualiza la gráfica de barras de los resultados actuales.
+         */
+        function updateBarChart(latestCandidates) {
+            const labels = latestCandidates.map(c => c.nombre);
+            const votes = latestCandidates.map(c => c.votos);
+            const colors = latestCandidates.map(c => CANDIDATE_TRACKING.find(t => t.nombre === c.nombre)?.color || '#9CA3AF');
             
             const ctx = document.getElementById('barChart').getContext('2d');
 
@@ -414,33 +367,45 @@
                             label: 'Votos Actuales',
                             data: votes,
                             backgroundColor: colors,
-                            borderRadius: 4,
+                            borderRadius: 6,
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, title: { display: false } },
-                        scales: { y: { beginAtZero: true, title: { display: true, text: 'Votos' } } }
+                        plugins: {
+                            legend: { display: false },
+                            title: { display: true, text: 'Resultados Actuales por Votos', font: { size: 16 } }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Número de Votos' } }
+                        }
                     }
                 });
             }
         }
 
+        /**
+         * Dibuja y actualiza la gráfica de crecimiento histórico (Línea).
+         * @param {Object[]} history Todos los resultados históricos.
+         */
         function updateGrowthChart(history) {
             const labels = history.map(h => h.timestamp.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' }));
+            
+            // Filtramos explícitamente solo los dos candidatos solicitados (Nasrralla y Aszura)
+            const candidatesToTrack = ['SALVADOR NASRRALLA', 'NASRY JUAN ASZURA ZABLAH'];
 
             const datasets = CANDIDATE_TRACKING
                 .filter(c => candidatesToTrack.includes(c.nombre))
                 .map(candidate => {
-                    const dataPoints = history.map(h => h.data[candidate.nombre] || 0);
+                    const dataPoints = history.map(h => h.data[candidate.nombre] || 0); // Votos en cada punto histórico
                     return {
-                        label: candidate.nombre.split(' ')[0], 
+                        label: candidate.nombre,
                         data: dataPoints,
                         borderColor: candidate.color,
-                        backgroundColor: candidate.color + '22', 
+                        backgroundColor: candidate.color + '33', // Color con transparencia
                         fill: true,
-                        tension: 0.2,
+                        tension: 0.3,
                         pointRadius: 3,
                     };
                 });
@@ -462,8 +427,7 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                            title: { display: false },
-                            legend: { position: 'bottom' }
+                            title: { display: true, text: 'Crecimiento Histórico de Votos', font: { size: 16 } }
                         },
                         scales: {
                             y: { beginAtZero: true, title: { display: true, text: 'Votos Acumulados' } },
@@ -473,95 +437,134 @@
                 });
             }
         }
+        
+        /**
+         * Actualiza todos los componentes del dashboard.
+         * @param {Object[]} allResults Todos los resultados históricos.
+         */
+        function updateDashboard(allResults) {
+            if (allResults.length === 0) {
+                 document.getElementById('latest-results-cards').innerHTML = '<p class="text-gray-500 p-4">Aún no hay datos históricos. El dashboard se actualizará después de la primera consulta.</p>';
+                 document.getElementById('total-votes-display').textContent = '';
+                 return;
+            }
+            
+            // 1. Datos actuales para el Bar Chart y Tarjetas (el último registro)
+            const latestRecord = allResults[allResults.length - 1];
+            
+            // Recalculamos el porcentaje basado en el total de votos del registro
+            const latestCandidatesData = CANDIDATE_TRACKING.map(t => {
+                const votos = latestRecord.data[t.nombre] || 0;
+                return {
+                    ...t,
+                    votos: votos,
+                    porcentaje: (latestRecord.totalVotos > 0 ? (votos / latestRecord.totalVotos * 100) : 0).toFixed(2)
+                };
+            }).filter(c => c.votos > 0).sort((a, b) => b.votos - a.votos);
+
+            updateBarChart(latestCandidatesData);
+            
+            // 2. Tarjetas de Candidatos
+            let cardsHtml = '';
+            latestCandidatesData.forEach(c => {
+                cardsHtml += `
+                    <div class="card p-4 flex items-center space-x-4 border-l-4" style="border-left-color: ${c.color};">
+                        <img src="${c.foto}" alt="Foto de ${c.nombre}" class="w-16 h-16 rounded-full object-cover">
+                        <div class="flex-grow">
+                            <p class="text-sm font-semibold text-gray-700">${c.nombre}</p>
+                            <p class="text-2xl font-bold" style="color: ${c.color};">${c.votos.toLocaleString('es-HN')}</p>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+                                <div class="h-2.5 rounded-full" style="width: ${c.porcentaje}%; background-color: ${c.color};"></div>
+                            </div>
+                        </div>
+                        <span class="text-xl font-extrabold text-gray-700">${c.porcentaje}%</span>
+                    </div>
+                `;
+            });
+            document.getElementById('latest-results-cards').innerHTML = cardsHtml;
+            document.getElementById('total-votes-display').textContent = `Total de Votos Reportados: ${latestRecord.totalVotos.toLocaleString('es-HN')}`;
+
+            // 3. Gráfica de Crecimiento
+            updateGrowthChart(allResults);
+        }
+
+        // Función para mostrar mensajes temporales
+        function showMessage(message, type) {
+            const msgEl = document.getElementById('message-box');
+            msgEl.textContent = message;
+            msgEl.className = 'text-center p-2 rounded-lg mt-4';
+            if (type === 'success') {
+                msgEl.classList.add('bg-green-100', 'text-green-800');
+            } else if (type === 'error') {
+                msgEl.classList.add('bg-red-100', 'text-red-800');
+            }
+            setTimeout(() => { msgEl.textContent = ''; msgEl.className = ''; }, 5000);
+        }
 
 
-        // --- 6. Inicialización ---
-
-        window.onload = initializeFirebase;
-
+        // Iniciar la aplicación al cargar la ventana
+        window.onload = initializeApp;
     </script>
 </head>
 <body>
-    <div id="app" class="min-h-screen">
+    <div class="min-h-screen">
         <!-- Encabezado -->
         <header class="header-bg text-white shadow-lg p-4 sm:p-6">
-            <h1 class="text-2xl sm:text-3xl font-extrabold">Dashboard Electoral CNE</h1>
+            <h1 class="text-2xl sm:text-3xl font-bold">Dashboard Electoral Local</h1>
             <p class="text-sm opacity-80 mt-1">Monitoreo y Crecimiento Histórico de Resultados</p>
-            <p id="user-id" class="text-xs mt-2 italic"></p>
+            <p class="text-xs mt-2 italic text-yellow-300">Modo Local: Datos guardados en el almacenamiento de su navegador.</p>
         </header>
 
         <main class="container mx-auto p-4 sm:p-6 lg:p-8">
             <!-- Sección de Configuración y Estado -->
-            <section class="mb-6 p-4 card md:flex md:justify-between md:items-center">
+            <section class="mb-8 p-4 card md:flex md:justify-between md:items-center">
                 <div class="mb-4 md:mb-0">
-                    <h2 class="text-xl font-bold text-gray-800">Estado y Control</h2>
-                    <p id="status" class="text-sm text-blue-600 mt-1">Inicializando Firebase...</p>
-                    <p class="text-xs text-gray-500 mt-1">Última consulta: <span id="last-update">Nunca</span></p>
-                    <p class="text-xs text-gray-500">Intervalo de consulta: <span id="interval-display" class="font-bold">20</span> minutos</p>
+                    <h2 class="text-xl font-semibold text-gray-800">Estado y Configuración de Polling</h2>
+                    <p id="status" class="text-sm text-blue-600 mt-1">Cargando configuración...</p>
+                    <p id="last-update" class="text-xs text-gray-500 mt-1">Última consulta: Nunca</p>
+                    <p class="text-xs text-gray-500">Intervalo de consulta: <span id="interval-display" class="font-bold">20 minutos</span></p>
                     <div id="message-box"></div>
                 </div>
 
                 <!-- Controles de Intervalo -->
                 <div class="flex flex-col sm:flex-row items-start sm:items-end space-y-2 sm:space-y-0 sm:space-x-4">
                     <div class="w-full sm:w-auto">
-                        <label for="polling-interval-input" class="block text-sm font-medium text-gray-700 whitespace-nowrap">Intervalo (minutos):</label>
-                        <input type="number" id="polling-interval-input" value="20" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                        <label for="polling-interval" class="block text-sm font-medium text-gray-700 whitespace-nowrap">Intervalo (minutos):</label>
+                        <input type="number" id="polling-interval" value="20" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
                     </div>
-                    <button onclick="saveConfig()" class="w-full sm:w-auto mt-6 sm:mt-0 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150">
+                    <button id="save-config-btn" class="w-full sm:w-auto mt-6 sm:mt-0 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150">
                         Guardar y Reiniciar
                     </button>
                 </div>
             </section>
-            
-            <!-- CONTENIDO PRINCIPAL: CANDIDATOS Y GRÁFICAS -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                <!-- Columna Izquierda: Tarjetas de Candidatos (Ocupa 1/3) -->
-                <div class="lg:col-span-1 candidate-column p-0">
-                    <h2 class="text-lg font-extrabold text-gray-800 p-4 border-b">Resultados por Candidato</h2>
-                    
-                    <div id="latest-results-cards">
-                        <p class="text-gray-500 p-4">Cargando datos...</p>
-                    </div>
-                    
-                    <!-- Mostrar Total de Votos en el pie de la columna -->
-                    <div class="p-4 border-t mt-4">
-                        <h3 id="total-votes-display" class="text-lg font-bold text-gray-700">Total de Votos Reportados: 0</h3>
+            <h2 id="total-votes-display" class="text-lg font-bold text-gray-700 mb-4"></h2>
+            
+            <!-- Tarjetas de Últimos Resultados -->
+            <section id="latest-results-cards" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <!-- Las tarjetas se cargarán aquí dinámicamente -->
+            </section>
+
+            <!-- Gráficas de Resultados -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Gráfica de Barras de Resultados Actuales -->
+                <div class="card p-4 min-h-[400px]">
+                    <div class="h-full">
+                        <canvas id="barChart"></canvas>
                     </div>
                 </div>
 
-                <!-- Columna Derecha: Gráficas de Historial (Ocupa 2/3) -->
-                <div class="lg:col-span-2 space-y-6">
-                    
-                    <!-- Gráfica de Línea de Crecimiento Histórico -->
-                    <div class="card p-0">
-                        <div class="info-acta-header rounded-t-lg">
-                            <h2 class="text-lg font-bold">Crecimiento Histórico de Votos (Nasrralla vs Aszura)</h2>
-                        </div>
-                        <div class="p-4">
-                            <div class="h-[350px] w-full">
-                                <canvas id="growthChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Gráfica de Barras de Resultados Actuales (Para contraste) -->
-                    <div class="card p-0">
-                        <div class="info-acta-header rounded-t-lg bg-gray-700">
-                            <h2 class="text-lg font-bold">Comparación Actual de Votos</h2>
-                        </div>
-                        <div class="p-4">
-                            <div class="h-[350px] w-full">
-                                <canvas id="barChart"></canvas>
-                            </div>
-                        </div>
+                <!-- Gráfica de Línea de Crecimiento Histórico -->
+                <div class="card p-4 min-h-[400px]">
+                    <div class="h-full">
+                        <canvas id="growthChart"></canvas>
                     </div>
                 </div>
             </div>
         </main>
 
         <footer class="text-center p-4 text-sm text-gray-500">
-            Desarrollado con JavaScript Puro y Firebase Firestore para persistencia multi-usuario.
+            Desarrollado con localStorage y Chart.js.
         </footer>
     </div>
 </body>
