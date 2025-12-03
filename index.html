@@ -470,6 +470,7 @@
             }).filter(c => c.votos > 0).sort((a, b) => b.votos - a.votos);
 
             updateBarChart(latestCandidatesData);
+            console.log('latestCandidatesData ', latestCandidatesData)
             
             // 2. Tarjetas de Candidatos
             let cardsHtml = '';
