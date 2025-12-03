@@ -86,7 +86,7 @@
                 const candidatesList = rawData.candidatos || rawData.resultados || rawData.results || [];
                 let totalVotos = 0;
                 const candidateVotes = {};
-                
+                console.log('candidatesList: ', candidatesList);
                 candidatesList.forEach(c => {
                     const candidateName = c.nombre || ''; 
                     const votes = parseInt(c.votos, 10) || 0;
@@ -98,7 +98,7 @@
                         candidateVotes[candidateName] = votes;
                     } 
                 });
-                
+                console.log('CANDIDATE_TRACKING API: ', CANDIDATE_TRACKING);
                 const processedCandidates = CANDIDATE_TRACKING.map(t => {
                     const votos = candidateVotes[t.nombre] || 0;
                     return {
@@ -107,7 +107,7 @@
                         porcentaje: (totalVotos > 0 ? (votos / totalVotos * 100) : 0).toFixed(2)
                     };
                 }).filter(c => c.votos > 0);
-                
+                console.log('processedCandidates api: ', processedCandidates);
                 document.getElementById('status').textContent = 'Última consulta de API exitosa.';
                 return { 
                     data: candidateVotes, 
@@ -431,7 +431,7 @@
             
             // 1. Datos actuales para el Bar Chart y Tarjetas (el último registro)
             const latestRecord = allResults[allResults.length - 1];
-            
+            console.log('CANDIDATE_TRACKING dass: ', CANDIDATE_TRACKING);
             // Recalculamos el porcentaje basado en el total de votos del registro
             const latestCandidatesData = CANDIDATE_TRACKING.map(t => {
                 const votos = latestRecord.data[t.nombre] || 0;
@@ -441,6 +441,8 @@
                     porcentaje: (latestRecord.totalVotos > 0 ? (votos / latestRecord.totalVotos * 100) : 0).toFixed(2)
                 };
             }).filter(c => c.votos > 0).sort((a, b) => b.votos - a.votos);
+
+            console.log('latestCandidatesData: ', latestCandidatesData);
 
             updateBarChart(latestCandidatesData);
             
