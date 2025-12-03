@@ -63,6 +63,7 @@
          * @returns {Object[]} Datos de la API procesados.
          */
         async function fetchApiResults() {
+            console.log('clikk fecchh');
             try {
                 document.getElementById('status').textContent = 'Consultando API...';
                 
@@ -125,11 +126,14 @@
                     body: JSON.stringify(API_PAYLOAD)
                 });
 
+                console.log('response ', response);
+
                 if (!response.ok) {
                     throw new Error(`Error HTTP: ${response.status}. La simulación se usa como respaldo.`);
                 }
 
                 const rawData = await response.json();
+                console.log('rawData ', rawData);
                 
                 const candidatesList = rawData.candidatos || rawData.resultados || rawData.results || [];
                 let totalVotos = 0;
@@ -264,7 +268,9 @@
                 // Guardar solo los campos JSON serializables
                 const serializableHistory = history.map(h => ({
                     ...h,
-                    timestamp: h.timestamp.toISOString() // Volver a ISO string para guardar
+                     timestamp: (h.timestamp instanceof Date)
+                    ? h.timestamp.toISOString()
+                    : new Date(h.timestamp).toISOString() // Volver a ISO string para guardar
                 }));
 
                 localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(serializableHistory));
@@ -320,6 +326,7 @@
          * @param {number} minutes El intervalo en minutos.
          */
         function startPolling(minutes) {
+            console.log('clickkk ');
             if (currentIntervalId) {
                 clearInterval(currentIntervalId);
             }
