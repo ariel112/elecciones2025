@@ -109,6 +109,7 @@
                         candidateVotes[candidateName] = votes;
                     }
                 });
+                console.log('candidatesList api', candidatesList);
                 console.log('CANDIDATE_TRACKING API: ', CANDIDATE_TRACKING);
                 const processedCandidates = CANDIDATE_TRACKING.map(t => {
                     const votos = candidateVotes[t.nombre] || 0;
