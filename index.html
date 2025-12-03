@@ -87,8 +87,19 @@
                 let totalVotos = 0;
                 const candidateVotes = {};
                 console.log('candidatesList: ', candidatesList);
+                // candidatesList.forEach(c => {
+                //     const candidateName = c.nombre || ''; 
+                //     const votes = parseInt(c.votos, 10) || 0;
+                //     totalVotos += votes;
+
+                //     const trackedCandidate = CANDIDATE_TRACKING.find(t => t.nombre === candidateName);
+                    
+                //     if (trackedCandidate) {
+                //         candidateVotes[candidateName] = votes;
+                //     } 
+                // });
                 candidatesList.forEach(c => {
-                    const candidateName = c.nombre || ''; 
+                    const candidateName = c.cddto_nombres || ''; // ← AQUÍ EL CAMBIO
                     const votes = parseInt(c.votos, 10) || 0;
                     totalVotos += votes;
 
@@ -96,7 +107,7 @@
                     
                     if (trackedCandidate) {
                         candidateVotes[candidateName] = votes;
-                    } 
+                    }
                 });
                 console.log('CANDIDATE_TRACKING API: ', CANDIDATE_TRACKING);
                 const processedCandidates = CANDIDATE_TRACKING.map(t => {
