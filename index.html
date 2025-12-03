@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Monitoreo Electoral Local</title>
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -21,7 +20,6 @@
             background-image: linear-gradient(to right, #004d99, #007bff);
         }
     </style>
-    <!-- Chart.js CDN for graphics -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script>
         // --- VARIABLES GLOBALES Y CONFIGURACIÓN ---
@@ -29,7 +27,7 @@
         const POLLING_INTERVAL_STORAGE_KEY = 'pollingIntervalMinutes';
         const HISTORY_STORAGE_KEY = 'electionResultsHistory'; // Clave para localStorage
         
-        // Definición de Candidatos a Rastrear (Ajustados según el screenshot)
+        // Definición de Candidatos a Rastrear
         const CANDIDATE_TRACKING = [
             { id: '1', nombre: 'SALVADOR NASRRALLA', color: '#10B981', foto: 'https://placehold.co/100x100/10B981/ffffff?text=SN' },
             { id: '2', nombre: 'NASRY JUAN ASZURA ZABLAH', color: '#EF4444', foto: 'https://placehold.co/100x100/EF4444/ffffff?text=NA' },
@@ -46,7 +44,6 @@
         // Gráficos globales
         let barChartInstance, growthChartInstance;
 
-
         // --- 1. Inicialización y Carga ---
 
         function initializeApp() {
@@ -56,84 +53,35 @@
         }
 
         // --- 2. Funciones de API y Almacenamiento Local ---
-
+        
         /**
-         * Llama a la API de resultados electorales.
-         * En un entorno local (file://), esto ejecutará el modo de simulación.
-         * @returns {Object[]} Datos de la API procesados.
+         * Llama a la API de resultados electorales o ejecuta la simulación si es necesario.
+         * @returns {Object} Datos de la API procesados o simulados.
          */
         async function fetchApiResults() {
-            console.log('clikk fecchh');
             try {
                 document.getElementById('status').textContent = 'Consultando API...';
                 
-                // Determinamos si estamos en un entorno local (donde CORS fallará)
                 const isLocalFile = window.location.protocol === 'file:';
 
                 if (isLocalFile) {
-                    // --- MODO DE SIMULACIÓN (Para que funcione al abrir el archivo localmente) ---
-                    const factor = Math.random() * 0.05 + 1; // Crecimiento entre 1% y 5%
-                    const latestData = getLatestStoredResults();
-                    
-                    // Usamos los valores del screenshot como base
-                    const baseVotes = latestData ? latestData.data : {
-                         'SALVADOR NASRRALLA': 1018320, 
-                         'NASRY JUAN ASZURA ZABLAH': 999441, 
-                         'RIXI RAMONA MONCADA GODOY': 480203,
-                         'OTROS CANDIDATOS': 0
-                    };
-                    
-                    const mockResults = [];
-                    let totalVotos = 0;
-
-                    CANDIDATE_TRACKING.forEach(c => {
-                        const currentVotes = baseVotes[c.nombre] || 0; 
-                        
-                        let newVotes;
-                        if (c.nombre !== 'OTROS CANDIDATOS') {
-                            newVotes = Math.round(currentVotes * factor) + Math.floor(Math.random() * 5000);
-                        } else {
-                            newVotes = 0; 
-                        }
-                        
-                        mockResults.push({ nombre: c.nombre, votos: newVotes });
-                        totalVotos += newVotes;
-                    });
-                    
-                    const processedMock = {
-                        data: mockResults.reduce((acc, c) => {
-                            acc[c.nombre] = c.votos;
-                            return acc;
-                        }, {}),
-                        totalVotos: totalVotos,
-                        processedCandidates: mockResults.map(c => ({
-                            ...c,
-                            porcentaje: (c.votos / totalVotos * 100).toFixed(2)
-                        })),
-                        // Agregar timestamp manual para el historial
-                        timestamp: new Date().toISOString() 
-                    };
-
-                    document.getElementById('status').textContent = 'Modo Simulación: Datos generados y guardados localmente.';
-                    return processedMock;
+                    // Si es archivo local, siempre usamos la simulación
+                    document.getElementById('status').textContent = 'Modo Simulación Activo.';
+                    return fetchApiResultsSimulated();
                 }
-                // --- FIN DEL MOCK DATA ---
 
-                // --- LÓGICA DE API REAL (Solo funcionará si se ejecuta en un servidor que pase CORS) ---
+                // --- LÓGICA DE API REAL ---
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(API_PAYLOAD)
                 });
 
-                console.log('response ', response);
-
                 if (!response.ok) {
-                    throw new Error(`Error HTTP: ${response.status}. La simulación se usa como respaldo.`);
+                    throw new Error(`Error HTTP: ${response.status}. Recurriendo a simulación.`);
                 }
 
                 const rawData = await response.json();
-                console.log('rawData ', rawData);
                 
                 const candidatesList = rawData.candidatos || rawData.resultados || rawData.results || [];
                 let totalVotos = 0;
@@ -165,7 +113,7 @@
                     data: candidateVotes, 
                     totalVotos,
                     processedCandidates,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString() // Se guarda como ISO string
                 };
 
             } catch (error) {
@@ -177,12 +125,13 @@
         }
         
         /**
-         * Función auxiliar para la simulación en caso de que la API real falle.
+         * Genera datos de votación simulados con crecimiento gradual.
+         * @returns {Object} Datos simulados procesados.
          */
         function fetchApiResultsSimulated() {
-            const factor = Math.random() * 0.05 + 1;
-            const latestData = getLatestStoredResults();
+            const latestData = getLatestStoredResults(true); // Obtener el último con formato de datos
             
+            // Usamos los valores del último registro (o valores de base inicial si no hay historial)
             const baseVotes = latestData ? latestData.data : {
                  'SALVADOR NASRRALLA': 1018320, 
                  'NASRY JUAN ASZURA ZABLAH': 999441, 
@@ -195,37 +144,54 @@
 
             CANDIDATE_TRACKING.forEach(c => {
                 const currentVotes = baseVotes[c.nombre] || 0; 
-                let newVotes = (c.nombre !== 'OTROS CANDIDATOS') 
-                    ? Math.round(currentVotes * (Math.random() * 0.005 + 1)) + Math.floor(Math.random() * 5000)
-                    : 0;
+                let newVotes;
+                
+                if (c.nombre !== 'OTROS CANDIDATOS') {
+                    // Factor de crecimiento pequeño (0.0% a 0.5% + un número aleatorio)
+                    const factor = Math.random() * 0.005 + 1; 
+                    newVotes = Math.round(currentVotes * factor) + Math.floor(Math.random() * 5000);
+                } else {
+                    newVotes = 0; 
+                }
                 
                 mockResults.push({ nombre: c.nombre, votos: newVotes });
                 totalVotos += newVotes;
             });
             
+            const candidateVotes = mockResults.reduce((acc, c) => {
+                acc[c.nombre] = c.votos;
+                return acc;
+            }, {});
+
+            const processedCandidates = mockResults.map(c => ({
+                ...c,
+                porcentaje: (totalVotos > 0 ? (c.votos / totalVotos * 100) : 0).toFixed(2)
+            }));
+
             return {
-                data: mockResults.reduce((acc, c) => {
-                    acc[c.nombre] = c.votos;
-                    return acc;
-                }, {}),
+                data: candidateVotes,
                 totalVotos: totalVotos,
-                processedCandidates: mockResults.map(c => ({
-                    ...c,
-                    porcentaje: (c.votos / totalVotos * 100).toFixed(2)
-                })),
-                timestamp: new Date().toISOString()
+                processedCandidates: processedCandidates,
+                timestamp: new Date().toISOString() // Se guarda como ISO string
             };
         }
 
-
         /**
-         * Carga el historial de resultados desde localStorage.
+         * Carga el historial de resultados desde localStorage y convierte los timestamps a Date.
          * @returns {Object[]} El historial completo o un array vacío.
          */
         function loadHistory() {
             try {
                 const historyJson = localStorage.getItem(HISTORY_STORAGE_KEY);
-                return historyJson ? JSON.parse(historyJson) : [];
+                if (!historyJson) return [];
+                
+                const history = JSON.parse(historyJson);
+                
+                // Revertir el timestamp de ISO string a objeto Date para su uso posterior
+                return history.map(h => ({
+                    ...h,
+                    timestamp: new Date(h.timestamp)
+                }));
             } catch (e) {
                 console.error("Error al cargar historial de localStorage:", e);
                 return [];
@@ -234,19 +200,31 @@
 
         /**
          * Obtiene el último registro guardado en localStorage.
+         * @param {boolean} [returnSerializable=false] Si es true, retorna la versión no convertida de Date.
          */
-        function getLatestStoredResults() {
-             const history = loadHistory();
+        function getLatestStoredResults(returnSerializable = false) {
+             const history = returnSerializable ? loadRawHistory() : loadHistory();
              if (history.length > 0) {
-                 // El último elemento es el más reciente
                  return history[history.length - 1];
              }
              return null;
         }
 
         /**
+         * Carga el historial sin convertir el timestamp para propósitos de serialización.
+         */
+        function loadRawHistory() {
+            try {
+                 const historyJson = localStorage.getItem(HISTORY_STORAGE_KEY);
+                 return historyJson ? JSON.parse(historyJson) : [];
+            } catch (e) {
+                 return [];
+            }
+        }
+
+        /**
          * Agrega el nuevo resultado al historial y lo guarda en localStorage.
-         * @param {Object} results Los resultados procesados a guardar.
+         * @param {Object} results Los resultados procesados a guardar (con timestamp ISO string).
          */
         function saveResults(results) {
             if (!results) {
@@ -254,28 +232,15 @@
                 return;
             }
             try {
-                let history = loadHistory();
+                // Cargamos el historial en formato RAW (sin convertir a Date) para agregarlo
+                let history = loadRawHistory();
                 
-                // Convertir el timestamp ISO string de vuelta a Date si fuera necesario 
-                // para la compatibilidad con el código de gráficas.
-                const newRecord = {
-                    ...results,
-                    timestamp: new Date(results.timestamp) 
-                };
+                // Agregamos el nuevo registro que ya tiene el timestamp como ISO string
+                history.push(results);
                 
-                history.push(newRecord);
-                
-                // Guardar solo los campos JSON serializables
-                const serializableHistory = history.map(h => ({
-                    ...h,
-                     timestamp: (h.timestamp instanceof Date)
-                    ? h.timestamp.toISOString()
-                    : new Date(h.timestamp).toISOString() // Volver a ISO string para guardar
-                }));
-
-                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(serializableHistory));
+                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
                 console.log("Resultados guardados en localStorage.");
-                document.getElementById('status').textContent = 'Resultados guardados y actualizados en el navegador.';
+                document.getElementById('status').textContent = `Datos actualizados a las ${new Date().toLocaleTimeString('es-HN')}`;
                 
             } catch (error) {
                 console.error("Error al guardar en localStorage:", error);
@@ -287,14 +252,8 @@
          * Carga el historial completo y actualiza el dashboard.
          */
         function loadAndDisplayResults() {
-            let allResults = loadHistory();
-            
-            // Revertir el timestamp de ISO string a objeto Date para la visualización
-            allResults = allResults.map(h => ({
-                ...h,
-                timestamp: new Date(h.timestamp)
-            }));
-            
+            // La función loadHistory ya convierte los timestamps a Date
+            const allResults = loadHistory(); 
             updateDashboard(allResults);
         }
 
@@ -319,6 +278,15 @@
                     showMessage('El intervalo debe ser al menos 1 minuto.', 'error');
                 }
             });
+            
+             // Manejador del botón de limpieza
+            document.getElementById('clear-history-btn').addEventListener('click', () => {
+                localStorage.removeItem(HISTORY_STORAGE_KEY);
+                loadAndDisplayResults();
+                showMessage('Historial de resultados limpiado.', 'success');
+                 // Reiniciar el polling
+                loadIntervalAndStartPolling(); 
+            });
         }
 
         /**
@@ -326,7 +294,6 @@
          * @param {number} minutes El intervalo en minutos.
          */
         function startPolling(minutes) {
-            console.log('clickkk ');
             if (currentIntervalId) {
                 clearInterval(currentIntervalId);
             }
@@ -354,6 +321,7 @@
          * Dibuja y actualiza la gráfica de barras de los resultados actuales.
          */
         function updateBarChart(latestCandidates) {
+            // ... (El código de updateBarChart se mantiene igual) ...
             const labels = latestCandidates.map(c => c.nombre);
             const votes = latestCandidates.map(c => c.votos);
             const colors = latestCandidates.map(c => CANDIDATE_TRACKING.find(t => t.nombre === c.nombre)?.color || '#9CA3AF');
@@ -394,9 +362,10 @@
 
         /**
          * Dibuja y actualiza la gráfica de crecimiento histórico (Línea).
-         * @param {Object[]} history Todos los resultados históricos.
+         * @param {Object[]} history Todos los resultados históricos (con timestamp como Date).
          */
         function updateGrowthChart(history) {
+            // Aquí usamos el objeto Date directamente
             const labels = history.map(h => h.timestamp.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' }));
             
             // Filtramos explícitamente solo los dos candidatos solicitados (Nasrralla y Aszura)
@@ -453,6 +422,10 @@
             if (allResults.length === 0) {
                  document.getElementById('latest-results-cards').innerHTML = '<p class="text-gray-500 p-4">Aún no hay datos históricos. El dashboard se actualizará después de la primera consulta.</p>';
                  document.getElementById('total-votes-display').textContent = '';
+                 
+                 // Destruir gráficos si existen para evitar errores
+                 if (barChartInstance) { barChartInstance.destroy(); barChartInstance = null; }
+                 if (growthChartInstance) { growthChartInstance.destroy(); growthChartInstance = null; }
                  return;
             }
             
@@ -460,7 +433,6 @@
             const latestRecord = allResults[allResults.length - 1];
             
             // Recalculamos el porcentaje basado en el total de votos del registro
-            console.log('CANDIDATE_TRACKING: ', CANDIDATE_TRACKING);
             const latestCandidatesData = CANDIDATE_TRACKING.map(t => {
                 const votos = latestRecord.data[t.nombre] || 0;
                 return {
@@ -471,7 +443,6 @@
             }).filter(c => c.votos > 0).sort((a, b) => b.votos - a.votos);
 
             updateBarChart(latestCandidatesData);
-            console.log('latestCandidatesData ', latestCandidatesData)
             
             // 2. Tarjetas de Candidatos
             let cardsHtml = '';
@@ -517,15 +488,13 @@
 </head>
 <body>
     <div class="min-h-screen">
-        <!-- Encabezado -->
         <header class="header-bg text-white shadow-lg p-4 sm:p-6">
             <h1 class="text-2xl sm:text-3xl font-bold">Dashboard Electoral Local</h1>
             <p class="text-sm opacity-80 mt-1">Monitoreo y Crecimiento Histórico de Resultados</p>
-            <p class="text-xs mt-2 italic text-yellow-300">Modo Local: Datos guardados en el almacenamiento de su navegador.</p>
+            <p class="text-xs mt-2 italic text-yellow-300">Modo Local: Los datos se simulan y se guardan en el almacenamiento de su navegador.</p>
         </header>
 
         <main class="container mx-auto p-4 sm:p-6 lg:p-8">
-            <!-- Sección de Configuración y Estado -->
             <section class="mb-8 p-4 card md:flex md:justify-between md:items-center">
                 <div class="mb-4 md:mb-0">
                     <h2 class="text-xl font-semibold text-gray-800">Estado y Configuración de Polling</h2>
@@ -535,7 +504,6 @@
                     <div id="message-box"></div>
                 </div>
 
-                <!-- Controles de Intervalo -->
                 <div class="flex flex-col sm:flex-row items-start sm:items-end space-y-2 sm:space-y-0 sm:space-x-4">
                     <div class="w-full sm:w-auto">
                         <label for="polling-interval" class="block text-sm font-medium text-gray-700 whitespace-nowrap">Intervalo (minutos):</label>
@@ -544,26 +512,24 @@
                     <button id="save-config-btn" class="w-full sm:w-auto mt-6 sm:mt-0 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150">
                         Guardar y Reiniciar
                     </button>
+                    <button id="clear-history-btn" class="w-full sm:w-auto mt-6 sm:mt-0 px-4 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-150">
+                        Limpiar Historial
+                    </button>
                 </div>
             </section>
 
             <h2 id="total-votes-display" class="text-lg font-bold text-gray-700 mb-4"></h2>
             
-            <!-- Tarjetas de Últimos Resultados -->
             <section id="latest-results-cards" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <!-- Las tarjetas se cargarán aquí dinámicamente -->
-            </section>
+                </section>
 
-            <!-- Gráficas de Resultados -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Gráfica de Barras de Resultados Actuales -->
                 <div class="card p-4 min-h-[400px]">
                     <div class="h-full">
                         <canvas id="barChart"></canvas>
                     </div>
                 </div>
 
-                <!-- Gráfica de Línea de Crecimiento Histórico -->
                 <div class="card p-4 min-h-[400px]">
                     <div class="h-full">
                         <canvas id="growthChart"></canvas>
@@ -577,4 +543,3 @@
         </footer>
     </div>
 </body>
-</html>
