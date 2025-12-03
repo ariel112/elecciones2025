@@ -460,6 +460,7 @@
             const latestRecord = allResults[allResults.length - 1];
             
             // Recalculamos el porcentaje basado en el total de votos del registro
+            console.log('CANDIDATE_TRACKING: ', CANDIDATE_TRACKING);
             const latestCandidatesData = CANDIDATE_TRACKING.map(t => {
                 const votos = latestRecord.data[t.nombre] || 0;
                 return {
