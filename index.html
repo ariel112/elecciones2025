@@ -377,54 +377,143 @@
          * @param {Object[]} history Todos los resultados históricos (con timestamp como Date).
          */
         function updateGrowthChart(history) {
-            // Aquí usamos el objeto Date directamente
             const labels = history.map(h => h.timestamp.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' }));
             
-            // Filtramos explícitamente solo los dos candidatos solicitados (Nasrralla y Aszura)
-            const candidatesToTrack = ['SALVADOR ALEJANDRO CESAR NASRALLA SALUM', 'NASRY JUAN ASFURA ZABLAH'];
+            // Nombres de los candidatos para el cálculo del margen
+            const candidate1Name = 'SALVADOR ALEJANDRO CESAR NASRALLA SALUM';
+            const candidate2Name = 'NASRY JUAN ASFURA ZABLAH';
 
-            const datasets = CANDIDATE_TRACKING
-                .filter(c => candidatesToTrack.includes(c.nombre))
-                .map(candidate => {
-                    const dataPoints = history.map(h => h.data[candidate.nombre] || 0); // Votos en cada punto histórico
-                    return {
-                        label: candidate.nombre,
-                        data: dataPoints,
-                        borderColor: candidate.color,
-                        backgroundColor: candidate.color + '33', // Color con transparencia
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 3,
-                    };
-                });
+            // 1. Calcular la diferencia (Margen)
+            const marginData = history.map(h => {
+                const votes1 = h.data[candidate1Name] || 0;
+                const votes2 = h.data[candidate2Name] || 0;
+                // Positivo = NASRRALLA gana, Negativo = ASZURA gana
+                return votes1 - votes2; 
+            });
+
+            // 2. Definir el dataset del Margen
+            const datasets = [{
+                label: `Margen ( ${candidate1Name} - ${candidate2Name} )`,
+                data: marginData,
+                borderColor: '#004d99', // Color de línea
+                backgroundColor: 'rgba(0, 77, 153, 0.2)',
+                fill: 'origin', // Rellena el área entre la línea y el eje Y=0
+                tension: 0.3,
+                pointRadius: 3,
+            }];
+            
+            // 3. Plugin para dibujar la línea horizontal en y=0
+            const plugins = [{
+                id: 'zeroLine',
+                beforeDraw: (chart) => {
+                    const ctx = chart.ctx;
+                    const yAxis = chart.scales.y;
+                    const zeroValue = yAxis.getPixelForValue(0);
+                    
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(yAxis.left, zeroValue);
+                    ctx.lineTo(yAxis.right, zeroValue);
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }];
 
             const ctx = document.getElementById('growthChart').getContext('2d');
 
             if (growthChartInstance) {
+                // Actualización
                 growthChartInstance.data.labels = labels;
                 growthChartInstance.data.datasets = datasets;
+                growthChartInstance.options.plugins.title.text = `Margen de Votos (${candidate1Name} vs ${candidate2Name})`;
                 growthChartInstance.update();
             } else {
+                // Inicialización
                 growthChartInstance = new Chart(ctx, {
                     type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: datasets
-                    },
+                    data: { labels, datasets },
+                    plugins: plugins,
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                            title: { display: true, text: 'Crecimiento Histórico de Votos', font: { size: 16 } }
+                            title: { 
+                                display: true, 
+                                text: `Margen de Votos (${candidate1Name} vs ${candidate2Name})`, 
+                                font: { size: 16 } 
+                            },
+                            legend: { display: true },
                         },
                         scales: {
-                            y: { beginAtZero: true, title: { display: true, text: 'Votos Acumulados' } },
+                            y: { 
+                                // Es crucial no empezar en cero para que el margen se mueva libremente
+                                beginAtZero: false, 
+                                title: { display: true, text: 'Diferencia de Votos (Positivo = SN Gana)' },
+                                ticks: {
+                                    callback: function(value, index, values) {
+                                        // Muestra miles con separador (ej: 12,000 o -5,000)
+                                        return value.toLocaleString('es-HN');
+                                    }
+                                }
+                            },
                             x: { title: { display: true, text: 'Hora de Consulta' } }
                         }
                     }
                 });
             }
         }
+        // function updateGrowthChart(history) {
+        //     // Aquí usamos el objeto Date directamente
+        //     const labels = history.map(h => h.timestamp.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' }));
+            
+        //     // Filtramos explícitamente solo los dos candidatos solicitados (Nasrralla y Aszura)
+        //     const candidatesToTrack = ['SALVADOR ALEJANDRO CESAR NASRALLA SALUM', 'NASRY JUAN ASFURA ZABLAH'];
+
+        //     const datasets = CANDIDATE_TRACKING
+        //         .filter(c => candidatesToTrack.includes(c.nombre))
+        //         .map(candidate => {
+        //             const dataPoints = history.map(h => h.data[candidate.nombre] || 0); // Votos en cada punto histórico
+        //             return {
+        //                 label: candidate.nombre,
+        //                 data: dataPoints,
+        //                 borderColor: candidate.color,
+        //                 backgroundColor: candidate.color + '33', // Color con transparencia
+        //                 fill: true,
+        //                 tension: 0.3,
+        //                 pointRadius: 3,
+        //             };
+        //         });
+
+        //     const ctx = document.getElementById('growthChart').getContext('2d');
+
+        //     if (growthChartInstance) {
+        //         growthChartInstance.data.labels = labels;
+        //         growthChartInstance.data.datasets = datasets;
+        //         growthChartInstance.update();
+        //     } else {
+        //         growthChartInstance = new Chart(ctx, {
+        //             type: 'line',
+        //             data: {
+        //                 labels: labels,
+        //                 datasets: datasets
+        //             },
+        //             options: {
+        //                 responsive: true,
+        //                 maintainAspectRatio: false,
+        //                 plugins: {
+        //                     title: { display: true, text: 'Crecimiento Histórico de Votos', font: { size: 25 } }
+        //                 },
+        //                 scales: {
+        //                     y: { beginAtZero: true, title: { display: true, text: 'Votos Acumulados' } },
+        //                     x: { title: { display: true, text: 'Hora de Consulta' } }
+        //                 }
+        //             }
+        //         });
+        //     }
+        // }
         
         /**
          * Actualiza todos los componentes del dashboard.
