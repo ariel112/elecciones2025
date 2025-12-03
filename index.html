@@ -192,23 +192,23 @@
          * Carga el historial de resultados desde localStorage y convierte los timestamps a Date.
          * @returns {Object[]} El historial completo o un array vacío.
          */
-        // function loadHistory() {
-        //     try {
-        //         const historyJson = localStorage.getItem(HISTORY_STORAGE_KEY);
-        //         if (!historyJson) return [];
+        function loadHistory() {
+            try {
+                const historyJson = localStorage.getItem(HISTORY_STORAGE_KEY);
+                if (!historyJson) return [];
                 
-        //         const history = JSON.parse(historyJson);
+                const history = JSON.parse(historyJson);
                 
-        //         // Revertir el timestamp de ISO string a objeto Date para su uso posterior
-        //         return history.map(h => ({
-        //             ...h,
-        //             timestamp: new Date(h.timestamp)
-        //         }));
-        //     } catch (e) {
-        //         console.error("Error al cargar historial de localStorage:", e);
-        //         return [];
-        //     }
-        // }
+                // Revertir el timestamp de ISO string a objeto Date para su uso posterior
+                return history.map(h => ({
+                    ...h,
+                    timestamp: new Date(h.timestamp)
+                }));
+            } catch (e) {
+                console.error("Error al cargar historial de localStorage:", e);
+                return [];
+            }
+        }
 
         /**
          * Obtiene el último registro guardado en localStorage.
@@ -238,122 +238,28 @@
          * Agrega el nuevo resultado al historial y lo guarda en localStorage.
          * @param {Object} results Los resultados procesados a guardar (con timestamp ISO string).
          */
-        // index.html - Dentro del <script>
-
-        // 🚨 ¡IMPORTANTE! REEMPLAZA ESTAS VARIABLES CON TUS CREDENCIALES DE SUPABASE 🚨
-        const SUPABASE_URL = 'https://ggjfzbxacblzxytlltvw.supabase.co'; 
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdnamZ6YnhhY2Jsenh5dGxsdHZ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3NzE5MDUsImV4cCI6MjA4MDM0NzkwNX0.pvahIkYDfHOiLf7HrDwQhlz1mjox5VuT3jnawJtHErE'; 
-
-        // Nombre de la tabla
-        const TABLE_NAME = 'voto_margen'; 
-
-        // Nombres de candidatos para reconstruir el objeto de datos
-        const C1_NAME = 'SALVADOR ALEJANDRO CESAR NASRALLA SALUM';
-        const C2_NAME = 'NASRY JUAN ASFURA ZABLAH';
-
-        // function saveResults(results) {
-        //     if (!results) {
-        //         console.warn("No se pueden guardar resultados nulos.");
-        //         return;
-        //     }
-        //     try {
-        //         // Cargamos el historial en formato RAW (sin convertir a Date) para agregarlo
-        //         let history = loadRawHistory();
-                
-        //         // Agregamos el nuevo registro que ya tiene el timestamp como ISO string
-        //         history.push(results);
-                
-        //         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-        //         console.log("Resultados guardados en localStorage.");
-        //         document.getElementById('status').textContent = `Datos actualizados a las ${new Date().toLocaleTimeString('es-HN')}`;
-                
-        //     } catch (error) {
-        //         console.error("Error al guardar en localStorage:", error);
-        //         document.getElementById('status').textContent = 'Error al guardar en el navegador.';
-        //     }
-        // }
-         async function saveResults(results) {
-            if (!results) return;
-            
-            const votes1 = results.data[C1_NAME] || 0;
-            const votes2 = results.data[C2_NAME] || 0;
-            const margin = votes1 - votes2;
-            
-            // 1. Datos a enviar (coinciden con tus columnas de la tabla)
-            const dataToSend = {
-                timestamp: results.timestamp, 
-                margin: margin,
-                votos_sn: votes1, 
-                votos_nj: votes2,
-            };
-
+        function saveResults(results) {
+            if (!results) {
+                console.warn("No se pueden guardar resultados nulos.");
+                return;
+            }
             try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE_NAME}`, {
-                    method: 'POST', 
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'apikey': SUPABASE_ANON_KEY, // Clave de autenticación
-                        'Prefer': 'return=minimal' // Optimizar la respuesta
-                    },
-                    body: JSON.stringify(dataToSend)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Error Supabase: ${response.statusText}`);
-                }
-
-                document.getElementById('status').textContent = `Datos de margen guardados en Supabase.`;
+                // Cargamos el historial en formato RAW (sin convertir a Date) para agregarlo
+                let history = loadRawHistory();
+                
+                // Agregamos el nuevo registro que ya tiene el timestamp como ISO string
+                history.push(results);
+                
+                localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+                console.log("Resultados guardados en localStorage.");
+                document.getElementById('status').textContent = `Datos actualizados a las ${new Date().toLocaleTimeString('es-HN')}`;
                 
             } catch (error) {
-                console.error("Error al guardar en Supabase:", error);
-                document.getElementById('status').textContent = 'Error: Fallo al guardar en Supabase. (Consulte F12)';
+                console.error("Error al guardar en localStorage:", error);
+                document.getElementById('status').textContent = 'Error al guardar en el navegador.';
             }
         }
-
-        // --- Función de CARGA (Obtiene el historial de Supabase) ---
-        async function loadHistory() {
-            try {
-                document.getElementById('status').textContent = 'Cargando historial desde Supabase...';
-                
-                // El 'select=*' pide todas las columnas. El 'order' ordena por timestamp.
-                const queryURL = `${SUPABASE_URL}/rest/v1/${TABLE_NAME}?select=*&order=timestamp.asc`;
-
-                const response = await fetch(queryURL, { 
-                    method: 'GET',
-                    headers: {
-                        'apikey': SUPABASE_ANON_KEY, // Clave de autenticación
-                        'Accept': 'application/json'
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Error Supabase: ${response.status}`);
-                }
-                
-                const rawHistory = await response.json();
-                
-                // 1. Transformar los datos de Supabase al formato que espera tu dashboard
-                return rawHistory.map(h => {
-                    const votes1 = h.votos_sn || 0;
-                    const votes2 = h.votos_nj || 0;
-                    const total = votes1 + votes2; 
-                    
-                    return {
-                        timestamp: new Date(h.timestamp), 
-                        totalVotos: total,
-                        data: {
-                            [C1_NAME]: votes1,
-                            [C2_NAME]: votes2,
-                        }
-                    };
-                });
-
-            } catch (e) {
-                console.error("Error al cargar historial de Supabase:", e);
-                document.getElementById('status').textContent = 'Error: No se pudo conectar a Supabase.';
-                return [];
-            }
-        }
+        
         /**
          * Carga el historial completo y actualiza el dashboard.
          */
@@ -559,6 +465,55 @@
                 });
             }
         }
+        // function updateGrowthChart(history) {
+        //     // Aquí usamos el objeto Date directamente
+        //     const labels = history.map(h => h.timestamp.toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' }));
+            
+        //     // Filtramos explícitamente solo los dos candidatos solicitados (Nasrralla y Aszura)
+        //     const candidatesToTrack = ['SALVADOR ALEJANDRO CESAR NASRALLA SALUM', 'NASRY JUAN ASFURA ZABLAH'];
+
+        //     const datasets = CANDIDATE_TRACKING
+        //         .filter(c => candidatesToTrack.includes(c.nombre))
+        //         .map(candidate => {
+        //             const dataPoints = history.map(h => h.data[candidate.nombre] || 0); // Votos en cada punto histórico
+        //             return {
+        //                 label: candidate.nombre,
+        //                 data: dataPoints,
+        //                 borderColor: candidate.color,
+        //                 backgroundColor: candidate.color + '33', // Color con transparencia
+        //                 fill: true,
+        //                 tension: 0.3,
+        //                 pointRadius: 3,
+        //             };
+        //         });
+
+        //     const ctx = document.getElementById('growthChart').getContext('2d');
+
+        //     if (growthChartInstance) {
+        //         growthChartInstance.data.labels = labels;
+        //         growthChartInstance.data.datasets = datasets;
+        //         growthChartInstance.update();
+        //     } else {
+        //         growthChartInstance = new Chart(ctx, {
+        //             type: 'line',
+        //             data: {
+        //                 labels: labels,
+        //                 datasets: datasets
+        //             },
+        //             options: {
+        //                 responsive: true,
+        //                 maintainAspectRatio: false,
+        //                 plugins: {
+        //                     title: { display: true, text: 'Crecimiento Histórico de Votos', font: { size: 25 } }
+        //                 },
+        //                 scales: {
+        //                     y: { beginAtZero: true, title: { display: true, text: 'Votos Acumulados' } },
+        //                     x: { title: { display: true, text: 'Hora de Consulta' } }
+        //                 }
+        //             }
+        //         });
+        //     }
+        // }
         
         /**
          * Actualiza todos los componentes del dashboard.
